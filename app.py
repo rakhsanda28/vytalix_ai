@@ -4,6 +4,9 @@ import pickle
 from datetime import datetime
 import uuid
 import plotly.express as px
+import io
+import json
+import qrcode
 
 st.set_page_config(
     page_title="Vytalix AI",
@@ -40,10 +43,12 @@ st.markdown("""
 
 /* Main block */
 .block-container {
-    padding-top: 2rem;
+    padding-top: 2.5rem;
     padding-bottom: 2rem;
+    padding-left: 4rem;
+    padding-right: 4rem;
 }
-
+            
 /* Sidebar */
 section[data-testid="stSidebar"] {
     background: linear-gradient(to bottom, #DFF1FF, #CFEAFF) !important;
@@ -219,6 +224,84 @@ code, pre {
 .stSlider [data-baseweb="slider"] {
     color: #2D8CFF !important;
 }
+
+/* Download button / normal button white-blue */
+.stDownloadButton > button {
+    background: #FFFFFF !important;
+    color: #0B3C6D !important;
+    border: 2px solid #2D8CFF !important;
+    border-radius: 12px !important;
+    padding: 0.65rem 1.2rem !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 12px rgba(45,140,255,0.15) !important;
+}
+
+/* Hover effect */
+.stDownloadButton > button:hover {
+    background: #EAF6FF !important;
+    color: #0B3C6D !important;
+    border: 2px solid #1976D2 !important;
+}
+/* Dataframe ko white-blue force karo */
+[data-testid="stDataFrame"] {
+    background: #FFFFFF !important;
+    border: 1px solid #D7ECFF !important;
+    border-radius: 16px !important;
+    padding: 6px !important;
+}
+
+[data-testid="stDataFrame"] * {
+    color: #12344D !important;
+    border-color: #D7ECFF !important;
+}
+
+[data-testid="stDataFrame"] div[role="grid"] {
+    background: #FFFFFF !important;
+}
+
+[data-testid="stDataFrame"] div[role="row"] {
+    background: #FFFFFF !important;
+}
+
+[data-testid="stDataFrame"] div[role="columnheader"] {
+    background: #DFF1FF !important;
+    color: #0B3C6D !important;
+    font-weight: 700 !important;
+}
+
+[data-testid="stDataFrame"] div[role="gridcell"] {
+    background: #FFFFFF !important;
+    color: #12344D !important;
+}
+            
+.summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+    color: #12344D;
+    background: #FFFFFF;
+}
+
+.summary-table thead th {
+    background: #DFF1FF !important;
+    color: #0B3C6D !important;
+    font-weight: 700;
+    padding: 12px 10px;
+    text-align: center;
+    border-bottom: 1px solid #D7ECFF;
+}
+
+.summary-table tbody td {
+    background: #FFFFFF !important;
+    color: #12344D !important;
+    padding: 12px 10px;
+    text-align: center;
+    border-bottom: 1px solid #EEF6FF;
+}
+
+.summary-table tbody tr:last-child td {
+    border-bottom: none;
+}           
 </style>
 """, unsafe_allow_html=True)
 
@@ -246,6 +329,9 @@ model, scaler, feature_names = load_assets()
 # =========================
 if "assessment_history" not in st.session_state:
     st.session_state.assessment_history = []
+
+if "latest_result" not in st.session_state:
+    st.session_state.latest_result = None
 
 # =========================
 # Human-readable mappings
@@ -327,6 +413,75 @@ def section_box(title, content, bg="#F4FAFF", border="#CFE8FF"):
         """,
         unsafe_allow_html=True
     )
+
+
+def compact_card(title, value, subtitle=""):
+    st.markdown(
+        f"""
+        <div style="
+            background:#FFFFFF;
+            border:1px solid #D7ECFF;
+            border-radius:20px;
+            padding:22px;
+            box-shadow:0 8px 22px rgba(45,140,255,0.08);
+            min-height:120px;
+            display:flex;
+            flex-direction:column;
+            justify-content:center;
+        ">
+            <div style="font-size:14px; color:#6B7280;">{title}</div>
+            <div style="font-size:26px; font-weight:800; color:#0B3C6D; margin-top:8px;">{value}</div>
+            <div style="font-size:14px; color:#6B7280; margin-top:8px;">{subtitle}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def alert_chip(text, bg="#FFF8E8", border="#F6D78B", color="#7A4B00", icon="⚠"):
+    st.markdown(
+        f"""
+        <div style="
+            background:{bg};
+            border:1px solid {border};
+            border-radius:14px;
+            padding:14px 16px;
+            margin-bottom:12px;
+            color:{color};
+            font-weight:600;
+        ">
+            {icon} {text}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# =========================
+# QR Helper Functions
+# =========================
+def build_qr_payload(patient_name, assessment_id, risk_label, spo2, temperature, rr, recommendation):
+    payload = f"""Patient Name: {patient_name}
+Patient ID: {assessment_id}
+Risk Level: {risk_label}
+SpO2: {spo2}%
+Temperature: {temperature}°F
+Respiratory Rate: {rr}
+Recommendation: {recommendation}
+Timestamp: {datetime.now().strftime("%Y-%m-%d %I:%M %p")}"""
+    return payload
+
+
+def generate_qr_image(data_text):
+    qr = qrcode.QRCode(
+        version=1,
+        box_size=10,
+        border=4
+    )
+    qr.add_data(data_text)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+    return img
 
 # =========================
 # Core logic
@@ -569,46 +724,416 @@ def add_to_history(assessment_id, mode, risk_label, prob, decision):
         st.session_state.assessment_history = st.session_state.assessment_history[-5:]
 
 
-def render_shareable_summary(assessment_id, risk_label, spo2, temperature, rr, recommendation):
-    st.markdown("### Shareable Patient Summary")
-    st.button("Generate Shareable Health Summary", disabled=True)
-
-    st.markdown(
-        f"""
-        <div style="
-            border:2px dashed #6FA8DC;
-            border-radius:16px;
-            padding:20px;
-            background:#FFFFFF;
-            margin-top:10px;
-            color:#0B1F3A;
-            box-shadow:0 4px 14px rgba(45,127,249,0.08);
-        ">
-            <h4 style="margin-top:0; color:#0B1F3A;">QR-Ready Patient Handoff Summary</h4>
-            <p style="color:#1F2937;"><b>Patient ID:</b> {assessment_id}</p>
-            <p style="color:#1F2937;"><b>Risk Level:</b> {risk_label}</p>
-            <p style="color:#1F2937;"><b>Key Vitals:</b> SpO₂ {spo2}%, Temperature {temperature}°F, Respiratory Rate {rr}</p>
-            <p style="color:#1F2937;"><b>Recommendation:</b> {recommendation}</p>
-            <p style="color:#1F2937;"><b>Timestamp:</b> {datetime.now().strftime("%Y-%m-%d %I:%M %p")}</p>
-            <div style="
-                width:120px;
-                height:120px;
-                border:1px solid #9fbad0;
-                display:flex;
-                align-items:center;
-                justify-content:center;
-                margin-top:12px;
-                background:#F9FCFF;
-                font-size:14px;
-                color:#666;
-                border-radius:10px;
-            ">
-                QR Placeholder
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
+def render_shareable_summary(patient_name, assessment_id, risk_label, spo2, temperature, rr, recommendation):
+    qr_payload = build_qr_payload(
+        patient_name=patient_name,
+        assessment_id=assessment_id,
+        risk_label=risk_label,
+        spo2=spo2,
+        temperature=temperature,
+        rr=rr,
+        recommendation=recommendation
     )
+
+    qr_img = generate_qr_image(qr_payload).convert("RGB")
+
+    buf = io.BytesIO()
+    qr_img.save(buf, format="PNG")
+    byte_im = buf.getvalue()
+
+    st.markdown("### Shareable Patient Summary")
+
+    st.markdown(f"""
+    <div style="
+        background:#FFFFFF;
+        border:1px solid #D7ECFF;
+        border-radius:20px;
+        padding:24px;
+        box-shadow:0 8px 20px rgba(45,140,255,0.08);
+        margin-bottom:20px;
+        text-align:center;
+    ">
+        <div style="font-size:14px;color:#6B7280;">Patient Name</div>
+        <div style="font-size:24px;font-weight:800;color:#0B3C6D;margin-top:6px;">
+            {patient_name if patient_name else "Unknown Patient"}
+        </div>
+        <div style="font-size:14px;color:#6B7280;margin-top:16px;">Patient ID</div>
+        <div style="font-size:18px;font-weight:700;color:#3B5B7A;margin-top:4px;">
+            {assessment_id}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns([1, 1.4])
+
+    with col1:
+        st.image(qr_img, width=250)
+
+    with col2:
+        st.markdown(f"""
+        <div style="
+            background:#F4FAFF;
+            padding:25px;
+            border-radius:18px;
+            border:1px solid #D7ECFF;
+            min-height:250px;
+            color:#12344D;
+        ">
+            <h4 style="color:#0B3C6D; margin-top:0;">Patient Summary</h4>
+            <p><b>Risk Status:</b> {risk_label}</p>
+            <p><b>Health Summary:</b> Included</p>
+            <p><b>SpO₂:</b> {spo2}%</p>
+            <p><b>Temperature:</b> {temperature}°F</p>
+            <p><b>Respiratory Rate:</b> {rr}</p>
+            <p><b>Recommendation:</b> {recommendation}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.download_button(
+        label="⬇ Download QR",
+        data=byte_im,
+        file_name=f"{assessment_id}_qr.png",
+        mime="image/png",
+        use_container_width=True
+    )
+def render_personal_dashboard(res):
+    st.markdown("""
+    <h1 style="
+        margin-top:10px;
+        margin-bottom:24px;
+        font-size:42px;
+        font-weight:800;
+        color:#12344D;
+    ">
+        Personal Health Dashboard
+    </h1>
+    """, unsafe_allow_html=True)
+
+    # Row 1
+    row1_col1, row1_col2 = st.columns(2)
+
+    with row1_col1:
+     st.markdown(f"""
+     <div style="
+        background:#FFFFFF;
+        border:1px solid #D7ECFF;
+        border-radius:20px;
+        padding:22px;
+        box-shadow:0 8px 22px rgba(45,140,255,0.08);
+        min-height:120px;
+        display:flex;
+        flex-direction:column;
+        justify-content:center;
+     ">
+        <div style="font-size:14px; color:#6B7280;">Patient</div>
+        <div style="font-size:26px; font-weight:800; color:#0B3C6D; margin-top:8px;">
+            {res["patient_name"] if res["patient_name"] else "Unknown Patient"}
+        </div>
+        <div style="font-size:14px; color:#6B7280; margin-top:8px;">
+            ID: {res["assessment_id"]}
+        </div>
+     </div>
+     """, unsafe_allow_html=True)
+
+    with row1_col2:
+      compact_card("Current Risk", res["final_risk_label"], "AI-generated risk status")
+
+    st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+
+# Row 2
+    row2_col1, row2_col2 = st.columns(2)
+
+    with row2_col1:
+     compact_card("SpO₂", f"{res['spo2']}%", "Current oxygen saturation")
+
+    with row2_col2:
+     compact_card("Temperature", f"{res['temperature']}°F", "Body temperature")
+
+    st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+
+# Row 3
+    row3_col1, row3_col2 = st.columns(2)
+
+    with row3_col1:
+     compact_card("Respiratory Rate", f"{res['rr']}", "Breaths per minute")
+
+    with row3_col2:
+     st.markdown(f"""
+     <div style="
+        background:#FFFFFF;
+        border:1px solid #D7ECFF;
+        border-radius:20px;
+        padding:22px;
+        box-shadow:0 8px 22px rgba(45,140,255,0.08);
+        min-height:120px;
+        display:flex;
+        flex-direction:column;
+        justify-content:center;
+     ">
+        <div style="font-size:14px; color:#6B7280;">Next Step</div>
+        <div style="font-size:24px; font-weight:800; color:#0B3C6D; margin-top:8px; line-height:1.4;">
+            {res["hospital_decision"]["decision"]}
+        </div>
+        <div style="font-size:14px; color:#6B7280; margin-top:8px;">Recommended action</div>
+     </div>
+     """, unsafe_allow_html=True)
+
+     st.markdown("<div style='height:26px;'></div>", unsafe_allow_html=True)
+     st.markdown("## Monitoring Trend")
+
+    trend_df = pd.DataFrame({
+     "Time": ["T-3", "T-2", "T-1", "Current"],
+     "SpO2": [min(100, res["spo2"] + 2), min(100, res["spo2"] + 1), res["spo2"], res["spo2"]],
+     "Temperature_F": [max(95.0, res["temperature"] - 0.6), max(95.0, res["temperature"] - 0.3), res["temperature"] - 0.1, res["temperature"]],
+     "Respiratory_Rate": [max(8, res["rr"] - 3), max(8, res["rr"] - 2), max(8, res["rr"] - 1), res["rr"]]
+    })
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+     fig1 = px.line(trend_df, x="Time", y="SpO2", markers=True, title="SpO₂ Trend")
+     fig1.update_traces(
+        line=dict(color="#2D8CFF", width=4),
+        marker=dict(size=10)
+     )
+     fig1.update_layout(
+        height=340,
+        plot_bgcolor="#FFFFFF",
+        paper_bgcolor="#FFFFFF",
+        font=dict(color="black", size=14),
+        title_font=dict(color="black", size=16),
+        xaxis=dict(
+            tickfont=dict(color="black"),
+            title_font=dict(color="black"),
+            showgrid=True,
+            gridcolor="#D9D9D9"
+        ),
+        yaxis=dict(
+            tickfont=dict(color="black"),
+            title_font=dict(color="black"),
+            showgrid=True,
+            gridcolor="#D9D9D9"
+        ),
+        margin=dict(l=20, r=20, t=70, b=40)
+     )
+     st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
+
+    with col2:
+     fig2 = px.line(trend_df, x="Time", y="Temperature_F", markers=True, title="Temperature Trend")
+     fig2.update_traces(
+        line=dict(color="#2D8CFF", width=4),
+        marker=dict(size=10)
+     )
+     fig2.update_layout(
+        height=340,
+        plot_bgcolor="#FFFFFF",
+        paper_bgcolor="#FFFFFF",
+        font=dict(color="black", size=14),
+        title_font=dict(color="black", size=16),
+        xaxis=dict(
+            tickfont=dict(color="black"),
+            title_font=dict(color="black"),
+            showgrid=True,
+            gridcolor="#D9D9D9"
+        ),
+        yaxis=dict(
+            tickfont=dict(color="black"),
+            title_font=dict(color="black"),
+            showgrid=True,
+            gridcolor="#D9D9D9"
+        ),
+        margin=dict(l=20, r=20, t=70, b=40)
+     )
+     st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+
+    col3, _ = st.columns([1, 1])
+
+    with col3:
+     fig3 = px.line(trend_df, x="Time", y="Respiratory_Rate", markers=True, title="Respiratory Rate Trend")
+     fig3.update_traces(
+        line=dict(color="#2D8CFF", width=4),
+        marker=dict(size=10)
+     )
+     fig3.update_layout(
+        height=340,
+        plot_bgcolor="#FFFFFF",
+        paper_bgcolor="#FFFFFF",
+        font=dict(color="black", size=14),
+        title_font=dict(color="black", size=16),
+        xaxis=dict(
+            tickfont=dict(color="black"),
+            title_font=dict(color="black"),
+            showgrid=True,
+            gridcolor="#D9D9D9"
+        ),
+        yaxis=dict(
+            tickfont=dict(color="black"),
+            title_font=dict(color="black"),
+            showgrid=True,
+            gridcolor="#D9D9D9"
+        ),
+        margin=dict(l=20, r=20, t=70, b=40)
+     )
+     st.plotly_chart(fig3, use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+
+    summary_df = user_friendly_summary(
+      mode=res["mode"],
+     age=res["age"],
+     sex_label=res["sex_label"],
+     spo2=res["spo2"],
+     temperature=res["temperature"],
+     rr=res["rr"],
+     symptom_severity=res["symptom_severity"],
+     activity_fatigue=res["activity_fatigue"]
+    )
+    st.markdown("## User-Friendly Monitoring Summary")
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+
+    summary_df = user_friendly_summary(
+     mode=res["mode"],
+     age=res["age"],
+     sex_label=res["sex_label"],
+     spo2=res["spo2"],
+     temperature=res["temperature"],
+     rr=res["rr"],
+     symptom_severity=res["symptom_severity"],
+     activity_fatigue=res["activity_fatigue"]
+    ).copy()
+
+    summary_df["Temperature (°F)"] = summary_df["Temperature (°F)"].round(1)
+    summary_df["Symptom Severity"] = summary_df["Symptom Severity"].round(1)
+    summary_df["Activity/Fatigue"] = summary_df["Activity/Fatigue"].round(1)
+
+    summary_html = f"""
+    <div style="
+     background:#FFFFFF;
+     border:1px solid #D7ECFF;
+     border-radius:16px;
+     padding:14px;
+     box-shadow:0 6px 18px rgba(45,140,255,0.08);
+     margin-top:8px;
+     margin-bottom:10px;
+     overflow-x:auto;
+    ">
+     {summary_df.to_html(index=False, classes='summary-table')}
+    </div>
+    """
+
+    st.markdown(summary_html, unsafe_allow_html=True)
+
+
+def render_qr_health_key_screen(res):
+    st.markdown("## QR Health Key")
+    st.caption("A compact shareable health key for clinician handoff and triage.")
+    render_shareable_summary(
+        patient_name=res["patient_name"],
+        assessment_id=res["assessment_id"],
+        risk_label=res["final_risk_label"],
+        spo2=res["spo2"],
+        temperature=res["temperature"],
+        rr=res["rr"],
+        recommendation=res["hospital_decision"]["decision"]
+    )
+
+
+def render_health_alert_screen(res):
+    st.markdown("## Health Alert Center")
+
+    show_alert_banner(res["final_risk_label"])
+    show_emergency_escalation(res["final_risk_label"])
+
+    if res["final_risk_label"] == "HIGH RISK":
+        alert_chip("Immediate escalation recommended based on current risk profile.", bg="#FDECEC", border="#F4B5B5", color="#8B1E1E", icon="🚨")
+    elif res["final_risk_label"] == "MODERATE RISK":
+        alert_chip("Clinical review recommended. Patient should be observed closely.", bg="#FFF8E8", border="#F6D78B", color="#7A4B00", icon="⚠")
+    else:
+        alert_chip("Patient is currently stable. Continue preventive monitoring.", bg="#EAF8F0", border="#B8E3C7", color="#216C3A", icon="🟢")
+
+    st.markdown("### Active Risk Drivers")
+    explanation_df = explain_prediction(res["input_df"], model.feature_importances_)
+    st.table(explanation_df)
+
+    plain_drivers = get_plain_english_risk_drivers(explanation_df)
+    drivers_html = "".join([f"<p style='margin:4px 0; color:#1F2937;'>• {item}</p>" for item in plain_drivers])
+    section_box(
+        "Primary Risk Contributors",
+        drivers_html + "<p style='margin-top:10px; color:#374151;'><i>Risk elevated due to combined physiological abnormalities.</i></p>"
+    )
+
+    st.markdown("### Preventive Suggestions")
+    suggestions = preventive_suggestions(res["final_risk_label"])
+    for item in suggestions:
+        st.write(f"• {item}")
+
+
+def render_clinic_triage_screen(res):
+    st.markdown("## Clinic Triage Dashboard")
+
+    left, right = st.columns([2, 1])
+
+    with left:
+        st.markdown(f"""
+    <div style="
+     background:#FFFFFF;
+     border:1px solid #D7ECFF;
+     border-radius:18px;
+     padding:20px;
+     box-shadow:0 6px 16px rgba(45,140,255,0.08);
+    ">
+     <div style="font-size:14px; color:#6B7280;">Patient</div>
+     <div style="font-size:24px; font-weight:700; color:#0B3C6D; margin-bottom:10px;">{res["patient_name"] if res["patient_name"] else "Unknown Patient"}</div>
+
+     <b>Patient ID:</b> {res["assessment_id"]}<br>
+     <b>Mode Used:</b> {res["mode"]}<br>
+     <b>Risk Level:</b> {res["final_risk_label"]}<br>
+     <b>Confidence Band:</b> {res["confidence_band"]}<br><br>
+
+     <b>Monitoring Vitals</b><br>
+     SpO₂: {res["spo2"]}%<br>
+     Temperature: {res["temperature"]}°F<br>
+     Respiratory Rate: {res["rr"]}<br><br>
+
+     <b>Suggested Action:</b> {res["hospital_decision"]["decision"]}<br>
+     <b>Escalation Status:</b> {res["escalation_status"]}<br>
+     <b>Reason:</b> {res["hospital_decision"]["reason"]}
+    </div>
+    """, unsafe_allow_html=True)
+
+    with right:
+        compact_card("Triage Level", res["final_risk_label"], "Current triage classification")
+        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+        compact_card("Disposition", "Action Ready", res["hospital_decision"]["decision"])
+
+    st.markdown("### Recommendation")
+    st.markdown(f"""
+    <div style="
+     background:#F4FAFF;
+     padding:20px;
+     border-radius:16px;
+     border:1px solid #CFE8FF;
+     box-shadow:0 4px 14px rgba(45,140,255,0.08);
+     margin-bottom:16px;
+    ">
+     <h4 style="margin-top:0; color:#0B3C6D;">Recommended Next Step</h4>
+
+     <p style="margin:6px 0; color:#1F2937;"><b>Disposition:</b> {res["hospital_decision"]["decision"]}</p>
+     <p style="margin:6px 0; color:#1F2937;"><b>Clinical Recommendation:</b> {res["recommendation"]}</p>
+     <p style="margin:6px 0; color:#1F2937;"><b>Escalation Status:</b> {res["escalation_status"]}</p>
+     <p style="margin:6px 0; color:#1F2937;"><b>Reason:</b> {res["hospital_decision"]["reason"]}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("### Recent Assessments")
+    history_df = pd.DataFrame(st.session_state.assessment_history)
+    st.table(history_df)
+
+    st.markdown("### Clinician Notes")
+    st.text_area("Clinician Observation", value=res["default_observation"], height=120, key="clinic_obs")
+    st.text_area("Follow-up Advice", value=res["default_advice"], height=120, key="clinic_advice")
 
 # =========================
 # Header
@@ -632,6 +1157,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 st.markdown("---")
 
@@ -669,6 +1195,8 @@ default_thallium = 3
 # Input Forms
 # =========================
 st.subheader(f"Input Panel — {mode}")
+
+patient_name = st.text_input("Patient Name", placeholder="Enter Patient Name")
 
 if mode == "Personal Assist":
     st.caption("Simple user-facing form using understandable health and symptom inputs.")
@@ -836,127 +1364,6 @@ if st.button("Run AI Risk Assessment", use_container_width=True):
 
     add_to_history(assessment_id, mode, final_risk_label, pred_prob, hospital_decision["decision"])
 
-    st.markdown("---")
-    st.subheader("Assessment Results")
-
-    show_alert_banner(final_risk_label)
-    show_emergency_escalation(final_risk_label)
-
-    m1, m2, m3, m4 = st.columns(4)
-    with m1:
-        metric_card("Predicted Risk", final_risk_label, color)
-    with m2:
-        metric_card("Model Probability", f"{pred_prob * 100:.1f}%", "#2D7FF9")
-    with m3:
-        metric_card("Confidence Band", confidence_band, "#7E57C2")
-    with m4:
-        metric_card("Assessment ID", assessment_id, "#607D8B")
-
-    st.markdown("### Care Recommendation System")
-
-    st.markdown(f"""
-    <div style="
-     background:#F4FAFF;
-     padding:20px;
-     border-radius:16px;
-     border:1px solid #CFE8FF;
-     box-shadow:0 4px 14px rgba(45,140,255,0.08);
-     margin-bottom:16px;
-    ">
-     <h4 style="margin-top:0; color:#0B3C6D;">Recommended Next Step</h4>
-
-     <p style="margin:6px 0; color:#1F2937;"><b>Disposition:</b> {hospital_decision["decision"]}</p>
-     <p style="margin:6px 0; color:#1F2937;"><b>Clinical Recommendation:</b> {recommendation}</p>
-     <p style="margin:6px 0; color:#1F2937;"><b>Escalation Status:</b> {escalation_status}</p>
-     <p style="margin:6px 0; color:#1F2937;"><b>Reason:</b> {hospital_decision["reason"]}</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("### Why This Prediction?")
-    explanation_df = explain_prediction(input_df, model.feature_importances_)
-    st.table(explanation_df)
-
-    plain_drivers = get_plain_english_risk_drivers(explanation_df)
-    drivers_html = "".join([f"<p style='margin:4px 0; color:#1F2937;'>• {item}</p>" for item in plain_drivers])
-    section_box(
-        "Primary Risk Contributors",
-        drivers_html + "<p style='margin-top:10px; color:#374151;'><i>Risk elevated due to combined physiological abnormalities.</i></p>"
-    )
-
-    st.markdown("### Preventive Suggestions")
-    suggestions = preventive_suggestions(final_risk_label)
-    for item in suggestions:
-        st.write(f"• {item}")
-
-    st.markdown("### User-Friendly Monitoring Summary")
-    summary_df = user_friendly_summary(
-    mode=mode,
-    age=age,
-    sex_label=sex_label,
-    spo2=spo2,
-    temperature=temperature,
-    rr=rr,
-    symptom_severity=symptom_severity,
-    activity_fatigue=activity_fatigue
-    )
-    st.table(summary_df)
-
-    render_shareable_summary(
-        assessment_id=assessment_id,
-        risk_label=final_risk_label,
-        spo2=spo2,
-        temperature=temperature,
-        rr=rr,
-        recommendation=hospital_decision["decision"]
-    )
-
-    st.markdown("### Simulated Monitoring Trend")
-
-    trend_df = pd.DataFrame({
-     "Time": ["T-3", "T-2", "T-1", "Current"],
-     "SpO2": [min(100, spo2 + 2), min(100, spo2 + 1), spo2, spo2],
-     "Temperature_F": [max(95.0, temperature - 0.6), max(95.0, temperature - 0.3), temperature - 0.1, temperature],
-     "Respiratory_Rate": [max(8, rr - 3), max(8, rr - 2), max(8, rr - 1), rr]
-    })
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-     fig1 = px.line(trend_df, x="Time", y="SpO2", markers=True, title="SpO₂ Trend")
-     fig1.update_layout(
-        plot_bgcolor="#EAF6FF",
-        paper_bgcolor="#FFFFFF",
-        font=dict(color="#0B3C6D"),
-        margin=dict(l=20, r=20, t=40, b=20)
-     )
-     st.plotly_chart(fig1, use_container_width=True)
-
-    with col2:
-     fig2 = px.line(trend_df, x="Time", y="Temperature_F", markers=True, title="Temperature Trend")
-     fig2.update_layout(
-        plot_bgcolor="#EAF6FF",
-        paper_bgcolor="#FFFFFF",
-        font=dict(color="#0B3C6D"),
-        margin=dict(l=20, r=20, t=40, b=20)
-     )
-     st.plotly_chart(fig2, use_container_width=True)
-
-    with col3:
-     fig3 = px.line(trend_df, x="Time", y="Respiratory_Rate", markers=True, title="Respiratory Rate Trend")
-     fig3.update_layout(
-        plot_bgcolor="#EAF6FF",
-        paper_bgcolor="#FFFFFF",
-        font=dict(color="#0B3C6D"),
-        margin=dict(l=20, r=20, t=40, b=20)
-     )
-     st.plotly_chart(fig3, use_container_width=True)
-
-    st.markdown("### Assessments")
-    history_df = pd.DataFrame(st.session_state.assessment_history)
-    st.table(history_df)
-
-    st.markdown("### Clinician Notes")
-
     default_observation = ""
     default_advice = ""
 
@@ -970,11 +1377,69 @@ if st.button("Run AI Risk Assessment", use_container_width=True):
         default_observation = "High-risk presentation with escalation indicators."
         default_advice = "Immediate physician review and urgent care referral recommended."
 
-    st.text_area("Clinician Observation", value=default_observation, height=120)
-    st.text_area("Follow-up Advice", value=default_advice, height=120)
+    st.session_state.latest_result = {
+        "patient_name": patient_name,
+        "mode": mode,
+        "age": age,
+        "sex_label": sex_label,
+        "spo2": spo2,
+        "temperature": temperature,
+        "rr": rr,
+        "symptom_severity": symptom_severity,
+        "activity_fatigue": activity_fatigue,
+        "input_df": input_df,
+        "pred_prob": pred_prob,
+        "final_risk_label": final_risk_label,
+        "color": color,
+        "recommendation": recommendation,
+        "confidence_band": confidence_band,
+        "assessment_id": assessment_id,
+        "escalation_status": escalation_status,
+        "hospital_decision": hospital_decision,
+        "default_observation": default_observation,
+        "default_advice": default_advice,
+    }
+
+if st.session_state.latest_result is not None:
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="
+        background:#FFFFFF;
+        padding:18px 22px;
+        border-radius:18px;
+        box-shadow:0 6px 18px rgba(45,140,255,0.08);
+        border:1px solid #D7ECFF;
+        margin-bottom:28px;
+    ">
+    </div>
+    """, unsafe_allow_html=True)
+
+    screen = st.radio(
+        "Patient Care Journey",
+        ["🏠 Dashboard", "🔳 QR Health Key", "🚨 Health Alert", "🏥 Clinic Triage"],
+        horizontal=True
+    )
+
+    st.markdown("---")
+
+    res = st.session_state.latest_result
+
+    if screen == "🏠 Dashboard":
+        render_personal_dashboard(res)
+
+    elif screen == "🔳 QR Health Key":
+        render_qr_health_key_screen(res)
+
+    elif screen == "🚨 Health Alert":
+        render_health_alert_screen(res)
+
+    elif screen == "🏥 Clinic Triage":
+        render_clinic_triage_screen(res)
 
 else:
-    st.info("Select a mode, enter patient details, and click **Run AI Risk Assessment**.")
+    st.info("Select a mode, enter patient details, and click Run AI Risk Assessment.")
 
 # =========================
 # Footer
