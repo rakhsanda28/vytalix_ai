@@ -14,9 +14,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# =========================
-# GLOBAL WHITE-BLUE THEME
-# =========================
+#CSS
 st.markdown("""
 <style>
 
@@ -305,9 +303,7 @@ code, pre {
 </style>
 """, unsafe_allow_html=True)
 
-# =========================
-# Load model assets
-# =========================
+#Load Assets
 @st.cache_resource
 def load_assets():
     with open("heart_model.pkl", "rb") as f:
@@ -324,18 +320,14 @@ def load_assets():
 
 model, scaler, feature_names = load_assets()
 
-# =========================
-# Session state
-# =========================
+
 if "assessment_history" not in st.session_state:
     st.session_state.assessment_history = []
 
 if "latest_result" not in st.session_state:
     st.session_state.latest_result = None
 
-# =========================
-# Human-readable mappings
-# =========================
+#Human readable mappings
 SEX_MAP = {"Female": 0, "Male": 1}
 
 CHEST_PAIN_MAP = {
@@ -367,9 +359,9 @@ THAL_MAP = {
     "Reversible Defect": 7
 }
 
-# =========================
+
 # UI Helper Functions
-# =========================
+
 def metric_card(title, value, color):
     st.markdown(
         f"""
@@ -456,9 +448,8 @@ def alert_chip(text, bg="#FFF8E8", border="#F6D78B", color="#7A4B00", icon="⚠"
         unsafe_allow_html=True
     )
 
-# =========================
 # QR Helper Functions
-# =========================
+
 def build_qr_payload(patient_name, assessment_id, risk_label, spo2, temperature, rr, recommendation):
     payload = f"""Patient Name: {patient_name}
 Patient ID: {assessment_id}
@@ -483,9 +474,9 @@ def generate_qr_image(data_text):
     img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
     return img
 
-# =========================
+
 # Core logic
-# =========================
+
 def determine_risk(pred_prob, spo2, temperature, rr, bp, chest_pain, exercise_angina):
     if spo2 < 90 or temperature >= 102.0 or rr >= 28:
         return "HIGH RISK", "#D64545"
@@ -1135,9 +1126,9 @@ def render_clinic_triage_screen(res):
     st.text_area("Clinician Observation", value=res["default_observation"], height=120, key="clinic_obs")
     st.text_area("Follow-up Advice", value=res["default_advice"], height=120, key="clinic_advice")
 
-# =========================
+
 # Header
-# =========================
+
 st.markdown(
     """
     <h1 style='text-align:center; color:#0B3C6D;'>Vytalix AI</h1>
@@ -1161,9 +1152,9 @@ st.markdown(
 
 st.markdown("---")
 
-# =========================
+
 # Sidebar
-# =========================
+
 st.sidebar.header("Operational Mode")
 mode = st.sidebar.radio(
     "Choose Mode",
@@ -1176,9 +1167,9 @@ st.sidebar.info(
     "It supports monitoring and triage, and does not replace clinical diagnosis."
 )
 
-# =========================
+
 # Default clinical-neutral values
-# =========================
+
 default_chest_pain = 3
 default_bp = 130
 default_cholesterol = 220
@@ -1191,9 +1182,9 @@ default_slope = 2
 default_vessels = 0
 default_thallium = 3
 
-# =========================
+
 # Input Forms
-# =========================
+
 st.subheader(f"Input Panel — {mode}")
 
 patient_name = st.text_input("Patient Name", placeholder="Enter Patient Name")
@@ -1204,7 +1195,7 @@ if mode == "Personal Assist":
     c1, c2, c3 = st.columns(3)
 
     with c1:
-        age = st.slider("Age", 20, 100, 45)
+        age = st.slider("Age", 1, 120, 45)
         sex_label = st.selectbox("Sex", list(SEX_MAP.keys()))
         spo2 = st.slider("SpO₂", 80, 100, 97)
 
@@ -1240,7 +1231,7 @@ elif mode == "Clinic Assist":
     c1, c2, c3 = st.columns(3)
 
     with c1:
-        age = st.slider("Age", 20, 100, 50)
+        age = st.slider("Age", 1, 120, 50)
         sex_label = st.selectbox("Sex", list(SEX_MAP.keys()))
         chest_pain_label = st.selectbox("Chest Pain Type", list(CHEST_PAIN_MAP.keys()))
         bp = st.slider("Resting Blood Pressure", 80, 220, 130)
@@ -1281,7 +1272,7 @@ else:
     c1, c2, c3 = st.columns(3)
 
     with c1:
-        age = st.slider("Age", 20, 100, 50)
+        age = st.slider("Age", 1, 120, 50)
         sex_label = st.selectbox("Sex", list(SEX_MAP.keys()))
         spo2 = st.slider("SpO₂", 80, 100, 95)
         temperature = st.slider("Temperature (°F)", 95.0, 105.0, 99.0, step=0.1)
@@ -1339,9 +1330,9 @@ input_dict = build_full_input_dict(
 input_df = pd.DataFrame([input_dict])
 input_df = input_df[feature_names]
 
-# =========================
+
 # Prediction
-# =========================
+
 if st.button("Run AI Risk Assessment", use_container_width=True):
     scaled_input = scaler.transform(input_df)
     pred_prob = model.predict_proba(scaled_input)[0][1]
@@ -1441,9 +1432,9 @@ if st.session_state.latest_result is not None:
 else:
     st.info("Select a mode, enter patient details, and click Run AI Risk Assessment.")
 
-# =========================
+
 # Footer
-# =========================
+
 st.markdown("---")
 st.caption(
     "Design Note: This prototype uses role-appropriate interfaces. "
